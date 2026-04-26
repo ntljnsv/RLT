@@ -44,7 +44,6 @@ def parse_args():
   parser.add_argument("--grad_accum", type=int, default=4)
   parser.add_argument("--learning_rate", type=float, default=5e-7)
   parser.add_argument("--max_length", type=int, default=1024)
-  parser.add_argument("--max_prompt_length", type=int, default=512)
   parser.add_argument("--warmup_ratio", type=float, default=0.1)
 
   # LoRA
@@ -153,7 +152,6 @@ def get_dpo_config(args, has_val: bool):
     beta=args.beta,
     loss_type=args.loss_type,
     max_length=args.max_length,
-    max_prompt_length=args.max_prompt_length,
 
     # Training
     num_train_epochs=args.epochs,

@@ -35,8 +35,7 @@ def parse_args():
   # DPO
   parser.add_argument("--beta", type=float, default=0.1,
                       help="KL penalty coefficient. Higher = stay closer to reference model.")
-  parser.add_argument("--loss_type", type=str, default="dpo",
-                      choices=["dpo", "ipo", "sigmoid"],
+  parser.add_argument("--loss_type", type=str, default="ipo",
                       help="DPO loss variant. Use 'ipo' if you see training instability.")
 
   # Training

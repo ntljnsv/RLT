@@ -32,9 +32,9 @@ def load_model(model_path: str, is_peft: bool = True):
     base = AutoModelForCausalLM.from_pretrained(
       BASE_MODEL_ID,
       torch_dtype=torch.bfloat16,
-      device_map="auto",
     )
     model = PeftModel.from_pretrained(base, model_path)
+    model = model.to("cuda" if torch.cuda.is_available() else "cpu")
     model.eval()
   else:
     model = AutoModelForCausalLM.from_pretrained(
@@ -118,7 +118,7 @@ def compute_sequence_logprob(model, tokenizer, prompt: str, response: str) -> fl
     tokenize=True,
     add_generation_prompt=True,
     return_tensors="pt",
-  ).to(model.device)
+  ).input_ids.to(model.device)
 
   response_ids = tokenizer(
     response,

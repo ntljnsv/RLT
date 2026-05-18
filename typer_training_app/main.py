@@ -23,6 +23,7 @@ def train(
     output_dir: str = "outputs/dpo_run",
 ):
 
+    print("Loading dataset...")
     dataset_obj = load_dataset_any(dataset)
 
     config = DPOConfig(
@@ -37,7 +38,7 @@ def train(
         output_dir=output_dir,
     )
 
-    run_dpo_training(config, dataset)
+    run_dpo_training(config, dataset_obj)
 
 
 @app.command()

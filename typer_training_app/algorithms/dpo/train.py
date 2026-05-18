@@ -26,26 +26,31 @@ def get_lora_config(cfg):
 
 
 def detect_precision():
-    """Auto-detect safe precision for your hardware"""
     if torch.cuda.is_available():
         major, _ = torch.cuda.get_device_capability(0)
-        # Ampere+ GPUs support bf16
-        return major >= 8
+        return major >= 8  # bf16 for A100+
     return False
 
 
 def run_dpo_training(cfg, dataset):
+
     os.makedirs(cfg.output_dir, exist_ok=True)
 
     print("Loading model...")
-    model, tokenizer = load_model_and_tokenizer(cfg.model_id, cfg.load_in_4bit)
+
+    model, tokenizer = load_model_and_tokenizer(
+        cfg.model_id,
+        cfg.load_in_4bit
+    )
+
+    print("CUDA AVAILABLE:", torch.cuda.is_available())
+    print("MODEL DEVICE:", next(model.parameters()).device)
 
     print("Validating dataset...")
     records = validate_preference_dataset(dataset)
-
     print(f"Dataset size: {len(records)}")
 
-    print("Formatting dataset for DPO...")
+    print("Formatting dataset...")
     train_dataset = format_dpo_dataset(records, tokenizer)
 
     peft_config = get_lora_config(cfg)
@@ -81,8 +86,12 @@ def run_dpo_training(cfg, dataset):
     )
 
     print("Training...")
+
     trainer.train()
 
     print("Saving...")
-    trainer.save_model(os.path.join(cfg.output_dir, "final"))
-    tokenizer.save_pretrained(os.path.join(cfg.output_dir, "final"))
+
+    final_path = os.path.join(cfg.output_dir, "final")
+
+    trainer.save_model(final_path)
+    tokenizer.save_pretrained(final_path)

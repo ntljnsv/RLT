@@ -2,22 +2,19 @@ def validate_preference_dataset(records):
     if not records:
         raise ValueError("Dataset empty")
 
-    required = {"prompt", "chosen", "rejected"}
-
     cleaned = []
 
     for i, r in enumerate(records):
 
-        if not required.issubset(r.keys()):
-            raise ValueError(f"Missing columns at row {i}: {required}")
+        prompt = r.get("prompt")
+        chosen = r.get("chosen") or r.get("response_a")
+        rejected = r.get("rejected") or r.get("response_b")
 
-        prompt = r["prompt"]
-
-        chosen = r["chosen"] if "chosen" in r else r.get("response_a")
-        rejected = r["rejected"] if "rejected" in r else r.get("response_b")
+        if not prompt:
+            raise ValueError(f"Row {i}: missing prompt")
 
         if not chosen or not rejected:
-            raise ValueError(f"Invalid row {i}: missing chosen/rejected")
+            raise ValueError(f"Row {i}: missing chosen/rejected (or response_a/b)")
 
         cleaned.append({
             "prompt": prompt,

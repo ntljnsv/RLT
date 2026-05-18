@@ -1,4 +1,5 @@
 import typer
+
 from algorithms.dpo.config import DPOConfig
 from algorithms.dpo.train import run_dpo_training
 from algorithms.dpo.evaluate import compare_models_cli, winrate_cli
@@ -16,6 +17,7 @@ def train(
     lr: float = 5e-7,
     beta: float = 0.1,
     batch_size: int = 2,
+    grad_accum: int = 4,
     load_4bit: bool = False,
     no_lora: bool = False,
     output_dir: str = "outputs/dpo_run",
@@ -29,12 +31,13 @@ def train(
         learning_rate=lr,
         beta=beta,
         batch_size=batch_size,
+        grad_accum=grad_accum,
         load_in_4bit=load_4bit,
         no_lora=no_lora,
         output_dir=output_dir,
     )
 
-    run_dpo_training(config, dataset_obj)
+    run_dpo_training(config, dataset)
 
 
 @app.command()

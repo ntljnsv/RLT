@@ -1,5 +1,4 @@
 import os
-import torch
 
 from trl import DPOTrainer, DPOConfig
 from peft import LoraConfig, TaskType
@@ -18,23 +17,25 @@ def get_lora_config(cfg):
         lora_alpha=cfg.lora_alpha,
         lora_dropout=cfg.lora_dropout,
         target_modules=[
-            "q_proj","k_proj","v_proj","o_proj",
-            "gate_proj","up_proj","down_proj",
+            "q_proj", "k_proj", "v_proj", "o_proj",
+            "gate_proj", "up_proj", "down_proj",
         ],
         task_type=TaskType.CAUSAL_LM,
     )
 
 
-def run_dpo_training(cfg, dataset):
+def run_dpo_training(cfg, dataset_path: str):
     os.makedirs(cfg.output_dir, exist_ok=True)
 
     print("Loading model...")
-    model, tokenizer = load_model_and_tokenizer(cfg.model_id, cfg.load_in_4bit)
+    model, tokenizer = load_model_and_tokenizer(
+        cfg.model_id,
+        cfg.load_in_4bit
+    )
 
     print("Validating dataset...")
-    records = dataset if isinstance(dataset, list) else dataset.to_pandas().to_dict("records")
 
-    records = validate_preference_dataset(cfg.model_id if isinstance(cfg.model_id, str) else cfg.model_id)
+    records = validate_preference_dataset(dataset_path)
 
     train_dataset = format_dpo_dataset(records, tokenizer)
 
@@ -64,9 +65,9 @@ def run_dpo_training(cfg, dataset):
         peft_config=peft_config,
     )
 
-    print("Training...")
+    print("Training started...")
     trainer.train()
 
-    print("Saving...")
+    print("Saving model...")
     trainer.save_model(cfg.output_dir + "/final")
     tokenizer.save_pretrained(cfg.output_dir + "/final")

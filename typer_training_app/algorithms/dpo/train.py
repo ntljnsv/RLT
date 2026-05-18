@@ -24,19 +24,19 @@ def get_lora_config(cfg):
     )
 
 
-def run_dpo_training(cfg, dataset_path: str):
+def run_dpo_training(cfg, dataset):
+
     os.makedirs(cfg.output_dir, exist_ok=True)
 
     print("Loading model...")
-    model, tokenizer = load_model_and_tokenizer(
-        cfg.model_id,
-        cfg.load_in_4bit
-    )
+    model, tokenizer = load_model_and_tokenizer(cfg.model_id, cfg.load_in_4bit)
 
     print("Validating dataset...")
+    records = validate_preference_dataset(dataset)
 
-    records = validate_preference_dataset(dataset_path)
+    print(f"Dataset size: {len(records)}")
 
+    print("Formatting dataset for DPO...")
     train_dataset = format_dpo_dataset(records, tokenizer)
 
     peft_config = get_lora_config(cfg)
@@ -65,9 +65,9 @@ def run_dpo_training(cfg, dataset_path: str):
         peft_config=peft_config,
     )
 
-    print("Training started...")
+    print("Training...")
     trainer.train()
 
     print("Saving model...")
-    trainer.save_model(cfg.output_dir + "/final")
-    tokenizer.save_pretrained(cfg.output_dir + "/final")
+    trainer.save_model(os.path.join(cfg.output_dir, "final"))
+    tokenizer.save_pretrained(os.path.join(cfg.output_dir, "final"))

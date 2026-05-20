@@ -32,10 +32,15 @@ def write_csv(path: str, rows: list, fieldnames: list):
     writer.writerows(rows)
 
 
-def validate_dataset(path: str):
+def validate_dataset(
+  path: str,
+  col_prompt: str = "prompt",
+  col_chosen: str = "chosen",
+  col_rejected: str = "rejected"
+):
   """
   Checks that the CSV has the required columns and that every row has:
-    - Non-empty 'prompt', 'chosen', 'rejected' values
+    - Non-empty values in the prompt, chosen, and rejected columns
     - chosen != rejected
   """
   errors = []
@@ -52,21 +57,21 @@ def validate_dataset(path: str):
     sys.exit(1)
 
   # Check required columns
-  required_cols = {"prompt", "chosen", "rejected"}
+  required_cols = {col_prompt, col_chosen, col_rejected}
   actual_cols = set(records[0].keys())
   missing_cols = required_cols - actual_cols
   if missing_cols:
     print(f"  X Missing columns: {missing_cols}")
     print(f"    Found columns: {actual_cols}")
-    print(f"    Expected: prompt, chosen, rejected")
+    print(f"    Expected: '{col_prompt}', '{col_chosen}', '{col_rejected}'")
     sys.exit(1)
 
   for i, row in enumerate(records, start=2):  # start=2 accounts for header row
-    for key in ["prompt", "chosen", "rejected"]:
+    for key in [col_prompt, col_chosen, col_rejected]:
       if not row.get(key, "").strip():
         errors.append(f"Row {i}: '{key}' is empty")
 
-    if row.get("chosen", "").strip() == row.get("rejected", "").strip():
+    if row.get(col_chosen, "").strip() == row.get(col_rejected, "").strip():
       warnings.append(f"Row {i}: chosen == rejected (no preference signal)")
 
   print(f"\n{'='*50}")
@@ -97,16 +102,21 @@ def validate_dataset(path: str):
   return records
 
 
-def dataset_stats(path: str):
+def dataset_stats(
+  path: str,
+  col_prompt: str = "prompt",
+  col_chosen: str = "chosen",
+  col_rejected: str = "rejected"
+):
   records = read_csv(path)
 
   if not records:
     print("Dataset is empty.")
     return
 
-  prompt_lens   = [len(r["prompt"].split())   for r in records]
-  chosen_lens   = [len(r["chosen"].split())   for r in records]
-  rejected_lens = [len(r["rejected"].split()) for r in records]
+  prompt_lens   = [len(r[col_prompt].split())   for r in records]
+  chosen_lens   = [len(r[col_chosen].split())   for r in records]
+  rejected_lens = [len(r[col_rejected].split()) for r in records]
 
   def stats(name, vals):
     print(f"\n  {name}:")
@@ -130,15 +140,31 @@ def main():
                       required=True)
   parser.add_argument("--dataset_path", type=str, help="Path to training CSV dataset")
 
+
+  parser.add_argument("--col_prompt",   type=str, default="prompt",   help="CSV column name for the prompt")
+  parser.add_argument("--col_chosen",   type=str, default="chosen",   help="CSV column name for the chosen response")
+  parser.add_argument("--col_rejected", type=str, default="rejected", help="CSV column name for the rejected response")
+
   args = parser.parse_args()
 
   if args.mode == "validate":
     assert args.dataset_path, "--dataset_path required"
-    validate_dataset(args.dataset_path)
+    validate_dataset(
+      args.dataset_path,
+      col_prompt=args.col_prompt,
+      col_chosen=args.col_chosen,
+      col_rejected=args.col_rejected
+    )
 
   elif args.mode == "stats":
     assert args.dataset_path, "--dataset_path required"
-    dataset_stats(args.dataset_path)
+    dataset_stats(
+      args.dataset_path,
+      col_prompt=args.col_prompt,
+      col_chosen=args.col_chosen,
+      col_rejected=args.col_rejected
+    )
+
 
 
 if __name__ == "__main__":

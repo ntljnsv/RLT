@@ -32,6 +32,11 @@ def parse_args():
   parser.add_argument("--val_split", type=float, default=0.05,
                       help="Fraction of data to use for validation")
 
+  # Column names
+  parser.add_argument("--col_prompt",   type=str, default="prompt",   help="CSV column name for the prompt")
+  parser.add_argument("--col_chosen",   type=str, default="chosen",   help="CSV column name for the chosen response")
+  parser.add_argument("--col_rejected", type=str, default="rejected", help="CSV column name for the rejected response")
+
   # DPO
   parser.add_argument("--beta", type=float, default=0.1,
                       help="KL penalty coefficient. Higher = stay closer to reference model.")
@@ -60,7 +65,14 @@ def parse_args():
   return parser.parse_args()
 
 
-def load_preference_dataset(dataset_path: str, tokenizer, val_split: float):
+def load_preference_dataset(
+  dataset_path: str, 
+  tokenizer, 
+  val_split: float,
+  col_prompt: str = "prompt",
+  col_chosen: str = "chosen",
+  col_rejected: str = "rejected"
+):
   """
   Loads a CSV file with columns: prompt, chosen, rejected
 
@@ -74,9 +86,19 @@ def load_preference_dataset(dataset_path: str, tokenizer, val_split: float):
       records.append(row)
 
   print(f"Loaded {len(records)} preference pairs from {dataset_path}")
+  print(f"  Columns — prompt: '{col_prompt}', chosen: '{col_chosen}', rejected: '{col_rejected}'")
+
+  if records:
+    actual_cols = set(records[0].keys())
+    for name, col in [("prompt", col_prompt), ("chosen", col_chosen), ("rejected", col_rejected)]:
+      if col not in actual_cols:
+        raise ValueError(
+          f"Column '{col}' (--col_{name}) not found in CSV. "
+          f"Available columns: {sorted(actual_cols)}"
+        )
 
   def format_record(record):
-    prompt_messages = [{"role": "user", "content": record["prompt"]}]
+    prompt_messages = [{"role": "user", "content": record[col_prompt]}]
     prompt = tokenizer.apply_chat_template(
       prompt_messages,
       tokenize=False,
@@ -84,8 +106,8 @@ def load_preference_dataset(dataset_path: str, tokenizer, val_split: float):
     )
     return {
       "prompt": prompt,
-      "chosen": record["chosen"],
-      "rejected": record["rejected"],
+      "chosen": record[col_chosen],
+      "rejected": record[col_rejected],
     }
 
   formatted = [format_record(r) for r in records]
@@ -201,7 +223,10 @@ def main():
 
   # Load dataset
   train_dataset, eval_dataset = load_preference_dataset(
-    args.dataset_path, tokenizer, args.val_split
+    args.dataset_path, tokenizer, args.val_split,
+    col_prompt=args.col_prompt,
+    col_chosen=args.col_chosen,
+    col_rejected=args.col_rejected,
   )
   print(f"Train samples: {len(train_dataset)}")
   if eval_dataset:

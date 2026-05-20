@@ -14,6 +14,12 @@ Usage examples:
 # Quick smoke-test on the first 50 rows (CPU)
     python generate_preference_pairs.py --output test_out.csv --limit 50
 
+# Translate a specific slice: 200 rows starting from row 1000
+    python generate_preference_pairs.py \
+        --start 1000 \
+        --num-samples 200 \
+        --output slice_1000_200.csv
+
 # Custom translation route and batch size with checkpoint csv
     python generate_preference_pairs.py \
         --forward-model  Helsinki-NLP/opus-mt-mk-en \
@@ -27,7 +33,7 @@ Usage examples:
 
 Requirements:
 -------------
-pip install transformers==4.38.2 torch==2.10.0 datasets==4.0.0 pandas==2.2.2 tqdm==4.67.3
+pip install transformers==5.8.1 torch==2.7.0 datasets==4.8.5 pandas==2.3.1 tqdm==4.67.1 sentencepiece==0.2.1
 """
 
 
@@ -44,7 +50,8 @@ try:
     from transformers import MarianMTModel, MarianTokenizer
 except ImportError:
     print("Please install needed requirements first.")
-    print("Use: pip install transformers==4.38.2 torch==2.10.0 datasets==4.0.0 pandas==2.2.2 tqdm==4.67.3")
+    print("Use: pip install transformers==5.8.1 torch==2.7.0 datasets==4.8.5 pandas==2.3.1 tqdm==4.67.1 sentencepiece==0.2.1")
+    sys.exit(1)
 
 
 logging.basicConfig(
@@ -80,8 +87,24 @@ def extract_all_qa_pairs(conversations: list) -> list[tuple[str, str]]:
     return pairs
 
 
-def load_qa_dataframe(dataset_name: str, limit: int | None = None) -> pd.DataFrame:
-    """ Load dataset and flatten all conversations into a Q&A DataFrame. """
+def load_qa_dataframe(
+    dataset_name: str,
+    limit: int | None = None,
+    start: int | None = None,
+    num_samples: int | None = None,
+) -> pd.DataFrame:
+    """
+    Load dataset and flatten all conversations into a Q&A DataFrame.
+
+    A ``source_index`` column is always added to record each row's position in
+    the fully-flattened dataset (0-based), making it possible to trace results
+    back to the original data and to merge partial outputs later.
+
+    Slicing priority:
+        - ``--start`` / ``--num-samples`` select df.iloc[start : start + num_samples].
+        - ``--limit`` selects df.head(limit)  (kept for backwards-compatibility).
+        - The two modes are mutually exclusive and enforced by parse_args().
+    """
     log.info("Loading dataset '%s' (split: train+test)...", dataset_name)
     ds = load_dataset(dataset_name, split="train+test")
     log.info("Total conversations loaded: %d", len(ds))
@@ -93,9 +116,24 @@ def load_qa_dataframe(dataset_name: str, limit: int | None = None) -> pd.DataFra
             records.append({"user_question": question, "preferred_answer": answer})
 
     df = pd.DataFrame(records, columns=["user_question", "preferred_answer"])
+    # Assign source_index before any slicing so it always reflects the row's
+    # position in the full flattened dataset.
+    df.insert(0, "source_index", range(len(df)))
     log.info("Total Q&A pairs extracted: %d", len(df))
 
-    if limit is not None:
+    if start is not None or num_samples is not None:
+        start = start or 0
+        end = (start + num_samples) if num_samples is not None else len(df)
+        if start >= len(df):
+            raise ValueError(
+                f"--start {start} is out of range — dataset only has {len(df)} rows."
+            )
+        df = df.iloc[start:end].copy()
+        log.info(
+            "Subset selected: rows %d–%d (%d rows, --start/--num-samples).",
+            start, start + len(df) - 1, len(df),
+        )
+    elif limit is not None:
         log.info("Limiting to first %d rows (--limit flag set).", limit)
         df = df.head(limit).copy()
 
@@ -119,7 +157,7 @@ def back_translate(
     Source -> pivot (forward_model) -> source (backward_model).
 
     Args:
-        df: Input DataFrame.
+        df: Input DataFrame. Must contain a ``source_index`` column.
         new_col_name: Column name for the back-translated output.
         forward_model: HuggingFace model ID for source→pivot.
         backward_model: HuggingFace model ID for pivot→source.
@@ -148,10 +186,17 @@ def back_translate(
         log.info("Checkpoint found at '%s', resuming...", checkpoint_path)
         ckpt_df = pd.read_csv(checkpoint_path)
         if new_col_name in ckpt_df.columns:
-            already_done = ckpt_df[new_col_name].dropna().tolist()
+            # Only count rows whose source_index appears in the current df so
+            # that a checkpoint from a different slice is not misapplied.
+            current_indices = set(df["source_index"].tolist())
+            already_done = (
+                ckpt_df[ckpt_df["source_index"].isin(current_indices)][new_col_name]
+                .dropna()
+                .tolist()
+            )
             results = already_done
             start_idx = len(results)
-            log.info("Resuming from row %d.", start_idx)
+            log.info("Resuming from row %d (within this slice).", start_idx)
 
     log.info("Loading forward model : %s", forward_model)
     fwd_tokenizer = MarianTokenizer.from_pretrained(forward_model)
@@ -265,11 +310,37 @@ def parse_args() -> argparse.Namespace:
         help="Only process the first N rows — useful for testing (default: all rows)",
     )
     parser.add_argument(
+        "--start",
+        type=int,
+        default=None,
+        help=(
+            "0-based index of the first row to process in the flattened Q&A dataset. "
+            "Use together with --num-samples to select a specific slice. "
+            "Cannot be combined with --limit."
+        ),
+    )
+    parser.add_argument(
+        "--num-samples",
+        type=int,
+        default=None,
+        help=(
+            "Number of rows to process starting from --start (default: all rows from --start). "
+            "Cannot be combined with --limit."
+        ),
+    )
+    parser.add_argument(
         "--checkpoint",
         default=None,
         help="Path to save/resume a checkpoint CSV during long runs",
     )
-    return parser.parse_args()
+
+    args = parser.parse_args()
+
+    # Enforce mutual exclusivity between --limit and --start / --num-samples.
+    if args.limit is not None and (args.start is not None or args.num_samples is not None):
+        parser.error("--limit cannot be combined with --start or --num-samples.")
+
+    return args
 
 
 if __name__ == "__main__":
@@ -278,7 +349,12 @@ if __name__ == "__main__":
     if args.device == -1 and torch.cuda.is_available():
         log.info("CUDA is available. To use GPU, pass --device 0")
 
-    df = load_qa_dataframe(args.dataset, limit=args.limit)
+    df = load_qa_dataframe(
+        args.dataset,
+        limit=args.limit,
+        start=args.start,
+        num_samples=args.num_samples,
+    )
 
     log.info(
         "Starting back-translation: %s -> pivot -> %s",

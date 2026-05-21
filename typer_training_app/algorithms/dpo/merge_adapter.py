@@ -3,12 +3,13 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from peft import PeftModel
 
 
-BASE_MODEL = "finki-ukim/VezilkaLLM-Instruct"
-
-
-def merge_lora_adapter(adapter_path: str, output_path: str):
+def merge_lora_adapter(
+    adapter_path: str,
+    output_path: str,
+    base_model_id: str,
+):
     model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL,
+        base_model_id,
         torch_dtype=torch.bfloat16,
         device_map="cpu",
     )
@@ -21,4 +22,4 @@ def merge_lora_adapter(adapter_path: str, output_path: str):
     model.save_pretrained(output_path)
     tokenizer.save_pretrained(output_path)
 
-    print("Merged model saved.")
+    print(f"Merged model saved to {output_path}")

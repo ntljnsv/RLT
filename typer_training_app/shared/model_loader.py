@@ -2,15 +2,17 @@ import torch
 from transformers import AutoModelForCausalLM, AutoTokenizer, BitsAndBytesConfig
 
 
-def load_model_and_tokenizer(model_id: str, load_in_4bit: bool):
-
+def load_model_and_tokenizer(
+    model_id: str,
+    load_in_4bit: bool,
+    gradient_checkpointing: bool = False,
+):
     tokenizer = AutoTokenizer.from_pretrained(model_id)
 
     if tokenizer.pad_token is None:
         tokenizer.pad_token = tokenizer.eos_token
 
     bnb_config = None
-
     if load_in_4bit:
         bnb_config = BitsAndBytesConfig(
             bnb_4bit_quant_type="nf4",
@@ -20,14 +22,13 @@ def load_model_and_tokenizer(model_id: str, load_in_4bit: bool):
 
     model = AutoModelForCausalLM.from_pretrained(
         model_id,
-
         device_map="auto",
-
         torch_dtype=torch.bfloat16,
-
         quantization_config=bnb_config,
-
         attn_implementation="eager",
     )
+
+    if gradient_checkpointing:
+        model.gradient_checkpointing_enable()
 
     return model, tokenizer

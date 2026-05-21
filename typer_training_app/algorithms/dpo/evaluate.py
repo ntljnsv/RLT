@@ -1,20 +1,13 @@
-import torch
-import csv
 import numpy as np
+import torch
 from transformers import AutoTokenizer, AutoModelForCausalLM
 from peft import PeftModel
 
+from shared.dataset_loader import load_dataset_any
+from shared.validation import validate_preference_dataset
 
-BASE_MODEL_ID = "finki-ukim/VezilkaLLM-Instruct"
 
-
-def load_model(model_path: str, peft: bool = True):
-    """
-    Loads either:
-    - LoRA adapter (PEFT model)
-    - or full merged model
-    """
-
+def load_model(model_path: str, base_model_id: str, peft: bool = True):
     tokenizer = AutoTokenizer.from_pretrained(model_path)
 
     if tokenizer.pad_token is None:
@@ -22,11 +15,10 @@ def load_model(model_path: str, peft: bool = True):
 
     if peft:
         base_model = AutoModelForCausalLM.from_pretrained(
-            BASE_MODEL_ID,
+            base_model_id,
             torch_dtype=torch.bfloat16,
             device_map="auto",
         )
-
         model = PeftModel.from_pretrained(base_model, model_path)
     else:
         model = AutoModelForCausalLM.from_pretrained(
@@ -63,17 +55,23 @@ def generate_response(model, tokenizer, prompt: str, max_new_tokens: int = 256):
     return tokenizer.decode(response, skip_special_tokens=True).strip()
 
 
-def compare_models_cli(model_path: str, prompts_path: str):
+def compare_models_cli(
+    model_path: str,
+    prompts_path: str,
+    base_model_id: str,
+):
     print("\nLoading base model...")
     base_model = AutoModelForCausalLM.from_pretrained(
-        BASE_MODEL_ID,
+        base_model_id,
         torch_dtype=torch.bfloat16,
         device_map="auto",
     )
-    base_tokenizer = AutoTokenizer.from_pretrained(BASE_MODEL_ID)
+    base_tokenizer = AutoTokenizer.from_pretrained(base_model_id)
 
     print("Loading trained model...")
-    dpo_model, dpo_tokenizer = load_model(model_path, peft=True)
+    dpo_model, dpo_tokenizer = load_model(
+        model_path, base_model_id=base_model_id, peft=True
+    )
 
     with open(prompts_path, "r", encoding="utf-8") as f:
         prompts = [line.strip() for line in f if line.strip()]
@@ -121,11 +119,18 @@ def compute_logprob(model, tokenizer, prompt: str, response: str) -> float:
         return -outputs.loss.item()
 
 
-def winrate_cli(model_path: str, dataset_path: str):
-    model, tokenizer = load_model(model_path, peft=True)
+def winrate_cli(
+    model_path: str,
+    dataset_path: str,
+    base_model_id: str,
+    max_samples: int | None = None,
+):
+    model, tokenizer = load_model(
+        model_path, base_model_id=base_model_id, peft=True
+    )
 
-    with open(dataset_path, "r", encoding="utf-8", newline="") as f:
-        rows = list(csv.DictReader(f))
+    raw = load_dataset_any(dataset_path, max_samples=max_samples)
+    rows = validate_preference_dataset(raw)
 
     wins = 0
     margins = []

@@ -11,19 +11,24 @@ class DPOConfig:
     max_samples: int | None = None
     model_id: str = "finki-ukim/VezilkaLLM-Instruct"
 
-    epochs: int = 30
+    epochs: int = 10
     learning_rate: float = 5e-7
     beta: float = 0.1
 
-    batch_size: int = 4
-    grad_accum: int = 4
+    batch_size: int = 12
+    grad_accum: int = 2
+    eval_batch_size: int = 4
 
-    max_length: int = 1024
+    max_length: int = 768
     max_prompt_length: int | None = None
     max_completion_length: int | None = None
     warmup_ratio: float = 0.1
 
-    load_in_4bit: bool = False
+    cuda_device: int = 0
+    precompute_ref_log_probs: bool = True
+    precompute_ref_batch_size: int = 16
+
+    load_in_4bit: bool = True
     no_lora: bool = False
     gradient_checkpointing: bool = True
 

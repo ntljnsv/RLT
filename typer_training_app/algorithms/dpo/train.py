@@ -4,7 +4,7 @@ import random
 import torch
 from transformers import EarlyStoppingCallback
 from trl import DPOTrainer, DPOConfig as TRLDPOConfig
-from peft import LoraConfig, TaskType
+from peft import LoraConfig, TaskType, get_peft_model
 
 from shared.model_loader import load_model_and_tokenizer
 from shared.dataset_loader import load_dataset_any
@@ -67,6 +67,8 @@ def build_trl_config(cfg, use_bf16: bool, has_eval: bool) -> TRLDPOConfig:
         report_to=cfg.report_to if cfg.report_to != "none" else "none",
         seed=cfg.seed,
         gradient_checkpointing=cfg.gradient_checkpointing,
+        precompute_ref_log_probs=cfg.precompute_ref_log_probs,
+        precompute_ref_batch_size=cfg.precompute_ref_batch_size,
     )
 
     if cfg.max_prompt_length is not None:
@@ -82,7 +84,7 @@ def build_trl_config(cfg, use_bf16: bool, has_eval: bool) -> TRLDPOConfig:
 
     if has_eval:
         kwargs["eval_strategy"] = cfg.eval_strategy
-        kwargs["per_device_eval_batch_size"] = cfg.batch_size
+        kwargs["per_device_eval_batch_size"] = cfg.eval_batch_size
         if cfg.early_stopping:
             kwargs["load_best_model_at_end"] = True
             kwargs["metric_for_best_model"] = cfg.metric_for_best_model
@@ -116,6 +118,25 @@ def build_callbacks(cfg, has_eval: bool) -> list:
     ]
 
 
+def apply_lora(model, cfg):
+    """Attach LoRA before DPOTrainer to avoid fp32 adapter cast OOM spike."""
+    peft_config = get_lora_config(cfg)
+    if peft_config is None:
+        return model, None
+
+    if torch.cuda.is_available():
+        torch.cuda.empty_cache()
+
+    print("Applying LoRA (autocast_adapter_dtype=False)...")
+    model = get_peft_model(
+        model,
+        peft_config,
+        autocast_adapter_dtype=False,
+    )
+    model.print_trainable_parameters()
+    return model, None
+
+
 def run_dpo_training(cfg, dataset=None):
     os.makedirs(cfg.output_dir, exist_ok=True)
     cfg.save(os.path.join(cfg.output_dir, "run_config.json"))
@@ -124,19 +145,31 @@ def run_dpo_training(cfg, dataset=None):
         print(f"Loading dataset from {cfg.dataset_path} ...")
         dataset = load_dataset_any(cfg.dataset_path, max_samples=cfg.max_samples)
 
-    print("Loading model...")
+    print("Validating dataset...")
+    records = validate_preference_dataset(dataset)
+    print(f"Dataset size: {len(records)}")
+
+    if torch.cuda.is_available():
+        torch.cuda.set_device(cfg.cuda_device)
+
+    print(f"Loading model on cuda:{cfg.cuda_device}")
     model, tokenizer = load_model_and_tokenizer(
         cfg.model_id,
         cfg.load_in_4bit,
         gradient_checkpointing=cfg.gradient_checkpointing,
+        device_index=cfg.cuda_device,
     )
 
     print("CUDA AVAILABLE:", torch.cuda.is_available())
-    print("MODEL DEVICE:", next(model.parameters()).device)
-
-    print("Validating dataset...")
-    records = validate_preference_dataset(dataset)
-    print(f"Dataset size: {len(records)}")
+    if torch.cuda.is_available():
+        print("MODEL DEVICE:", next(model.parameters()).device)
+        for i in range(torch.cuda.device_count()):
+            free, total = torch.cuda.mem_get_info(i)
+            used = total - free
+            print(
+                f"GPU {i} VRAM: {used / 1e9:.1f} GB used, "
+                f"{free / 1e9:.1f} GB free / {total / 1e9:.1f} GB total"
+            )
 
     train_records, eval_records = split_train_eval(
         records, cfg.eval_fraction, cfg.seed
@@ -149,9 +182,16 @@ def run_dpo_training(cfg, dataset=None):
         format_dpo_dataset(eval_records, tokenizer) if eval_records else None
     )
 
-    peft_config = get_lora_config(cfg)
+    model, peft_config = apply_lora(model, cfg)
     use_bf16 = detect_precision()
-    print(f"Using bf16={use_bf16}, fp16={not use_bf16}")
+    print(
+        f"Using bf16={use_bf16}, fp16={not use_bf16}, "
+        f"4bit={cfg.load_in_4bit}, batch={cfg.batch_size}, "
+        f"grad_accum={cfg.grad_accum}, "
+        f"gradient_checkpointing={cfg.gradient_checkpointing}, "
+        f"precompute_ref_log_probs={cfg.precompute_ref_log_probs}, "
+        f"precompute_ref_batch_size={cfg.precompute_ref_batch_size}"
+    )
 
     has_eval = eval_dataset is not None
     dpo_config = build_trl_config(cfg, use_bf16, has_eval=has_eval)

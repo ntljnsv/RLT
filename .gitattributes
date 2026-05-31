@@ -2,3 +2,4 @@ preference_data/preference_pairs_50k_100k.csv filter=lfs diff=lfs merge=lfs -tex
 preference_data/preference_pairs_100k_150k.csv filter=lfs diff=lfs merge=lfs -text
 preference_data/preference_pairs_150k_end.csv filter=lfs diff=lfs merge=lfs -text
 preference_data/gpp_combined.csv filter=lfs diff=lfs merge=lfs -text
+preference_data/aya_pref_pairs_combined.json filter=lfs diff=lfs merge=lfs -text

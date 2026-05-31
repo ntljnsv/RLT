@@ -21,6 +21,7 @@ DATASET_PRESETS: dict[str, Path] = {
     "100k_150k": PREFERENCE_DATA / "preference_pairs_100k_150k.csv",
     "150k_end": PREFERENCE_DATA / "preference_pairs_150k_end.csv",
     "short": APP_DATA / "preference_pairs_super_duper_short.json",
+    "json_combined": PREFERENCE_DATA / "aya_pref_pairs_combined.json",
 }
 
 DEFAULT_DATASET = "json"

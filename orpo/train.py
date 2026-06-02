@@ -202,7 +202,6 @@ def main():
     print(f"  LR:             {args.learning_rate}")
     print(f"  LoRA:           {'disabled' if args.no_lora else f'r={args.lora_r}, alpha={args.lora_alpha}'}")
     print(f"  4-bit:          {args.load_in_4bit}")
-    print(f"  Max length:     {args.max_length} (prompt: {args.max_prompt_length})")
     print(f"  Output:         {args.output_dir}")
     print(f"{'=' * 50}\n")
 

@@ -53,8 +53,6 @@ def parse_args():
                              "because there is no KL penalty from a reference model.")
     parser.add_argument("--max_length", type=int, default=1024,
                         help="Maximum sequence length (prompt + response). Longer sequences are truncated.")
-    parser.add_argument("--max_prompt_length", type=int, default=512,
-                        help="Maximum prompt length. Prompts longer than this are truncated.")
     parser.add_argument("--warmup_ratio", type=float, default=0.1,
                         help="Fraction of total steps used for linear LR warm-up")
 
@@ -166,10 +164,8 @@ def get_lora_config(args):
 
 def get_orpo_config(args, has_val: bool):
     return ORPOConfig(
-        lambda_=args.lambda_orpo,
-
+        beta=args.lambda_orpo,
         max_length=args.max_length,
-        max_prompt_length=args.max_prompt_length,
 
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.batch_size,
@@ -232,7 +228,7 @@ def main():
         train_dataset=train_dataset,
         eval_dataset=eval_dataset,
         processing_class=tokenizer,
-        peft_config=peft_config,
+        peft_config=peft_config
     )
 
     print("Starting ORPO training...\n")

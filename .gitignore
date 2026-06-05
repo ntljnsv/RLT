@@ -61,3 +61,4 @@ dmypy.json
 
 # Ruff stuff:
 .ruff_cache/
+typer_training_app/outputs/

@@ -13,7 +13,6 @@ APP_DATA = APP_ROOT / "data"
 DATASET_PRESETS: dict[str, Path] = {
     "gpp": PREFERENCE_DATA / "gpp_combined.csv",
     "gpp_combined": PREFERENCE_DATA / "gpp_combined.csv",
-    "json": PREFERENCE_DATA / "preference_pairs_raw.json",
     "0_1k": PREFERENCE_DATA / "preference_pairs_0_1k.csv",
     "0_10k": PREFERENCE_DATA / "preference_pairs_0_10k.csv",
     "10k_50k": PREFERENCE_DATA / "preference_pairs_10k_50k.csv",
@@ -24,7 +23,7 @@ DATASET_PRESETS: dict[str, Path] = {
     "json_combined": PREFERENCE_DATA / "aya_pref_pairs_combined.json",
 }
 
-DEFAULT_DATASET = "json"
+DEFAULT_DATASET = "json_combined"
 DEFAULT_DATASET_PATH = DATASET_PRESETS[DEFAULT_DATASET]
 
 
@@ -87,9 +86,34 @@ def _resolve_columns(df: pd.DataFrame) -> dict[str, str]:
     return rename
 
 
+def _coalesce_columns(df: pd.DataFrame, aliases: tuple[str, ...]) -> pd.Series:
+    """Pick the first non-empty value across alias columns (e.g. chosen vs response_a)."""
+    present = [name for name in aliases if name in df.columns]
+    if not present:
+        raise ValueError(
+            f"Dataset missing a column for one of {aliases}. Found: {list(df.columns)}"
+        )
+
+    def _non_empty(series: pd.Series) -> pd.Series:
+        as_str = series.astype("string")
+        return as_str.notna() & (as_str.str.strip() != "")
+
+    result = df[present[0]].astype("string")
+    for name in present[1:]:
+        candidate = df[name].astype("string")
+        use_candidate = _non_empty(candidate) & ~_non_empty(result)
+        result = result.where(~use_candidate, candidate)
+    return result
+
+
 def normalize_preference_dataframe(df: pd.DataFrame) -> pd.DataFrame:
-    df = df.rename(columns=_resolve_columns(df))
-    return df[["prompt", "chosen", "rejected"]]
+    return pd.DataFrame(
+        {
+            "prompt": _coalesce_columns(df, GPP_COLUMN_ALIASES["prompt"]),
+            "chosen": _coalesce_columns(df, GPP_COLUMN_ALIASES["chosen"]),
+            "rejected": _coalesce_columns(df, GPP_COLUMN_ALIASES["rejected"]),
+        }
+    )
 
 
 def load_csv_preference_pairs(path: Path, max_samples: int | None = None) -> list[dict]:
@@ -133,6 +157,10 @@ def load_dataset_any(source: str, max_samples: int | None = None):
             if max_samples is not None:
                 df = df.head(max_samples)
             df = normalize_preference_dataframe(df)
+            for col in ("prompt", "chosen", "rejected"):
+                df[col] = df[col].astype(str).str.strip()
+            df = df[(df["prompt"] != "") & (df["chosen"] != "") & (df["rejected"] != "")]
+            df = df[df["chosen"] != df["rejected"]]
             return df.to_dict("records")
 
         raise ValueError(f"Unsupported file type: {path.suffix}")

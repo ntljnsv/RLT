@@ -4,6 +4,7 @@ def validate_preference_dataset(records):
 
     cleaned = []
     skipped_equal = 0
+    skipped_incomplete = 0
 
     for i, r in enumerate(records):
         prompt = (
@@ -22,13 +23,16 @@ def validate_preference_dataset(records):
         )
 
         if not prompt or not str(prompt).strip():
-            raise ValueError(f"Row {i}: missing prompt")
+            skipped_incomplete += 1
+            continue
 
         if not chosen or not str(chosen).strip():
-            raise ValueError(f"Row {i}: missing chosen/preferred answer")
+            skipped_incomplete += 1
+            continue
 
         if not rejected or not str(rejected).strip():
-            raise ValueError(f"Row {i}: missing rejected/non-preferred answer")
+            skipped_incomplete += 1
+            continue
 
         chosen = str(chosen).strip()
         rejected = str(rejected).strip()
@@ -42,6 +46,9 @@ def validate_preference_dataset(records):
             "chosen": chosen,
             "rejected": rejected,
         })
+
+    if skipped_incomplete:
+        print(f"Skipped {skipped_incomplete} rows with missing or empty fields")
 
     if skipped_equal:
         print(f"Skipped {skipped_equal} rows with chosen == rejected")

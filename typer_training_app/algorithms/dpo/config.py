@@ -31,6 +31,7 @@ class DPOConfig:
     load_in_4bit: bool = True
     no_lora: bool = False
     gradient_checkpointing: bool = True
+    attn_implementation: str = "auto"
 
     lora_r: int = 16
     lora_alpha: int = 32

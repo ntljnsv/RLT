@@ -158,6 +158,7 @@ def run_dpo_training(cfg, dataset=None):
         cfg.load_in_4bit,
         gradient_checkpointing=cfg.gradient_checkpointing,
         device_index=cfg.cuda_device,
+        attn_implementation=cfg.attn_implementation,
     )
 
     print("CUDA AVAILABLE:", torch.cuda.is_available())
@@ -174,7 +175,8 @@ def run_dpo_training(cfg, dataset=None):
     train_records, eval_records = split_train_eval(
         records, cfg.eval_fraction, cfg.seed
     )
-    print(f"Train: {len(train_records)}, eval: {len(eval_records) or 0}")
+    n_eval = len(eval_records) if eval_records else 0
+    print(f"Train: {len(train_records)}, eval: {n_eval}")
 
     print("Formatting dataset...")
     train_dataset = format_dpo_dataset(train_records, tokenizer)
@@ -189,6 +191,7 @@ def run_dpo_training(cfg, dataset=None):
         f"4bit={cfg.load_in_4bit}, batch={cfg.batch_size}, "
         f"grad_accum={cfg.grad_accum}, "
         f"gradient_checkpointing={cfg.gradient_checkpointing}, "
+        f"attn={cfg.attn_implementation}, "
         f"precompute_ref_log_probs={cfg.precompute_ref_log_probs}, "
         f"precompute_ref_batch_size={cfg.precompute_ref_batch_size}"
     )
